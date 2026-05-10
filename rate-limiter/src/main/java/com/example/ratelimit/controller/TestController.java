@@ -1,6 +1,7 @@
 package com.example.ratelimit.controller;
 
 import com.example.ratelimit.annotation.RateLimit;
+import com.example.ratelimit.strategy.RateLimitMode;
 import com.example.ratelimit.strategy.RejectedStrategy;
 import com.example.ratelimit.strategy.StrategyType;
 import jakarta.servlet.http.HttpServletRequest;
@@ -48,5 +49,11 @@ public class TestController {
 
     public String myFallback(HttpServletRequest request) {
         return "当前请求被限流，返回降级结果";
+    }
+
+    @GetMapping("/distributed")
+    @RateLimit(strategy = StrategyType.TOKEN_BUCKET, mode = RateLimitMode.DISTRIBUTED, permitsPerSecond = 3, capacity = 3, key = "#request.remoteAddr")
+    public String distributed(HttpServletRequest request) {
+        return "DISTRIBUTED TOKEN_BUCKET: OK";
     }
 }

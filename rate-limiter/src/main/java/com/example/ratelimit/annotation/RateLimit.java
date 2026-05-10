@@ -1,5 +1,6 @@
 package com.example.ratelimit.annotation;
 
+import com.example.ratelimit.strategy.RateLimitMode;
 import com.example.ratelimit.strategy.RejectedStrategy;
 import com.example.ratelimit.strategy.StrategyType;
 
@@ -31,6 +32,8 @@ public @interface RateLimit {
     String key() default "";
 
     String fallback() default "";
+
+    RateLimitMode mode() default RateLimitMode.LOCAL;
 
     RejectedStrategy rejectedStrategy() default RejectedStrategy.ABORT;
 
