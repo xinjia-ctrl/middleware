@@ -14,5 +14,6 @@
 
     <modules>
         <module>rate-limiter</module>
+        <module>circuit-breaker</module>
     </modules>
 </project>
