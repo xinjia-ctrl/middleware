@@ -2,6 +2,7 @@ package com.example.ratelimit.aspect;
 
 import com.example.ratelimit.annotation.RateLimit;
 import com.example.ratelimit.exception.RateLimitException;
+import com.example.ratelimit.strategy.RejectedStrategy;
 import com.example.ratelimit.strategy.StrategyFactory;
 import com.example.ratelimit.util.KeyParser;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -34,16 +35,28 @@ public class RateLimitAspect {
         boolean acquired = strategyFactory.getStrategy(annotation).tryAcquire(key, 1);
 
         if (!acquired) {
-            String fallback = annotation.fallback();
-            if (!fallback.isBlank()) {
-                Method fallbackMethod = pjp.getTarget().getClass()
-                        .getDeclaredMethod(fallback, method.getParameterTypes());
-                fallbackMethod.setAccessible(true);
-                return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
-            }
-            throw new RateLimitException(annotation.message());
+            return handleRejected(pjp, method, annotation);
         }
 
         return pjp.proceed();
+    }
+
+    private Object handleRejected(ProceedingJoinPoint pjp, Method method, RateLimit annotation) throws Throwable {
+        return switch (annotation.rejectedStrategy()) {
+            case SILENT -> null;
+            case CALLER_RUNS -> invokeFallback(pjp, method, annotation);
+            default -> throw new RateLimitException(annotation.message());
+        };
+    }
+
+    private Object invokeFallback(ProceedingJoinPoint pjp, Method method, RateLimit annotation) throws Throwable {
+        String fallback = annotation.fallback();
+        if (fallback.isBlank()) {
+            throw new RateLimitException(annotation.message());
+        }
+        Method fallbackMethod = pjp.getTarget().getClass()
+                .getDeclaredMethod(fallback, method.getParameterTypes());
+        fallbackMethod.setAccessible(true);
+        return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
     }
 }

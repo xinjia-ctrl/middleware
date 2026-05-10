@@ -1,5 +1,6 @@
 package com.example.ratelimit.annotation;
 
+import com.example.ratelimit.strategy.RejectedStrategy;
 import com.example.ratelimit.strategy.StrategyType;
 
 import java.lang.annotation.*;
@@ -30,6 +31,8 @@ public @interface RateLimit {
     String key() default "";
 
     String fallback() default "";
+
+    RejectedStrategy rejectedStrategy() default RejectedStrategy.ABORT;
 
     String message() default "Too many requests, please try again later";
 }
