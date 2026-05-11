@@ -3,6 +3,7 @@ package com.example.circuitbreaker.aspect;
 import com.example.circuitbreaker.annotation.CircuitBreaker;
 import com.example.circuitbreaker.exception.CircuitBreakerException;
 import com.example.circuitbreaker.strategy.CircuitBreakerStateMachine;
+import com.example.circuitbreaker.strategy.RejectedStrategy;
 import com.example.circuitbreaker.util.KeyParser;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -33,14 +34,7 @@ public class CircuitBreakerAspect {
         boolean acquired = stateMachine.tryAcquire(key, annotation.failureThreshold(), annotation.successThreshold(), annotation.timeout(), annotation.timeUnit());
 
         if (!acquired) {
-            String fallback = annotation.fallback();
-            if (!fallback.isBlank()) {
-                Method fallbackMethod = pjp.getTarget().getClass()
-                        .getDeclaredMethod(fallback, method.getParameterTypes());
-                fallbackMethod.setAccessible(true);
-                return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
-            }
-            throw new CircuitBreakerException(annotation.message());
+            return handleRejected(pjp, method, annotation);
         }
 
         try {
@@ -49,14 +43,25 @@ public class CircuitBreakerAspect {
             return result;
         } catch (Throwable t) {
             stateMachine.recordFailure(key);
-            String fallback = annotation.fallback();
-            if (!fallback.isBlank()) {
-                Method fallbackMethod = pjp.getTarget().getClass()
-                        .getDeclaredMethod(fallback, method.getParameterTypes());
-                fallbackMethod.setAccessible(true);
-                return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
-            }
-            throw t;
+            return handleRejected(pjp, method, annotation);
         }
+    }
+
+    private Object handleRejected(ProceedingJoinPoint pjp, Method method, CircuitBreaker annotation) throws Throwable {
+        RejectedStrategy strategy = annotation.rejectedStrategy();
+
+        if (strategy == RejectedStrategy.SILENT) {
+            return null;
+        }
+
+        String fallback = annotation.fallback();
+        if (!fallback.isBlank()) {
+            Method fallbackMethod = pjp.getTarget().getClass()
+                    .getDeclaredMethod(fallback, method.getParameterTypes());
+            fallbackMethod.setAccessible(true);
+            return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
+        }
+
+        throw new CircuitBreakerException(annotation.message());
     }
 }

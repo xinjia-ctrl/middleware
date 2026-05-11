@@ -1,5 +1,7 @@
 package com.example.circuitbreaker.annotation;
 
+import com.example.circuitbreaker.strategy.RejectedStrategy;
+
 import java.lang.annotation.*;
 import java.util.concurrent.TimeUnit;
 
@@ -10,6 +12,8 @@ import java.util.concurrent.TimeUnit;
 public @interface CircuitBreaker {
 
     String fallback() default "";
+
+    RejectedStrategy rejectedStrategy() default RejectedStrategy.ABORT;
 
     int failureThreshold() default 5;
 
