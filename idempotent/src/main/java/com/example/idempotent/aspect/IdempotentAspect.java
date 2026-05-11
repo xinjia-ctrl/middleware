@@ -33,11 +33,21 @@ public class IdempotentAspect {
         boolean saved = storage.trySave(key, annotation.ttl(), annotation.timeUnit());
 
         if (!saved) {
+            if (annotation.cacheResult()) {
+                Object cached = storage.getResult(key);
+                if (cached != null) {
+                    return cached;
+                }
+            }
             throw new DuplicateRequestException(annotation.message());
         }
 
         try {
-            return pjp.proceed();
+            Object result = pjp.proceed();
+            if (annotation.cacheResult()) {
+                storage.saveResult(key, result, annotation.ttl(), annotation.timeUnit());
+            }
+            return result;
         } catch (Throwable t) {
             storage.remove(key);
             throw t;
