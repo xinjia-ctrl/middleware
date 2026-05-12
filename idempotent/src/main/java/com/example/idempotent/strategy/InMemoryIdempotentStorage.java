@@ -13,7 +13,14 @@ public class InMemoryIdempotentStorage implements IdempotentStorage {
     public boolean trySave(String key, long ttl, TimeUnit timeUnit) {
         long expireAt = System.currentTimeMillis() + timeUnit.toMillis(ttl);
         Long old = store.putIfAbsent(key, expireAt);
-        return old == null;
+        if (old == null) {
+            return true;
+        }
+        if (old <= System.currentTimeMillis()) {
+            store.replace(key, old, expireAt);
+            return true;
+        }
+        return false;
     }
 
     @Override
