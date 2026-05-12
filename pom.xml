@@ -16,5 +16,6 @@
         <module>rate-limiter</module>
         <module>circuit-breaker</module>
         <module>idempotent</module>
+        <module>cache-consistency</module>
     </modules>
 </project>
