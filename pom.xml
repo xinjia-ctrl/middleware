@@ -17,5 +17,6 @@
         <module>circuit-breaker</module>
         <module>idempotent</module>
         <module>cache-consistency</module>
+        <module>rpc</module>
     </modules>
 </project>
