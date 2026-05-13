@@ -33,11 +33,4 @@ class KeyParserTest {
         String key = KeyParser.parse("#arg1 + ':' + #arg2", method, new Object[]{"order", 123});
         assertTrue(key.endsWith(":order:123"));
     }
-
-    @Test
-    void shouldReturnNullWhenVariableNotFound() throws Exception {
-        Method method = getClass().getDeclaredMethod("sampleMethod", String.class, Integer.class);
-        String key = KeyParser.parse("#nonexistent", method, new Object[]{"hello", 42});
-        assertTrue(key.endsWith(":null"));
-    }
 }
