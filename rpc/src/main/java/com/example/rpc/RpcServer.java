@@ -55,6 +55,7 @@ public class RpcServer {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 8080;
         RpcServer server = new RpcServer();
         server.register(UserService.class, new UserServiceImpl());
+        server.register(OrderService.class, new OrderServiceImpl());
         server.start(port);
     }
 }
