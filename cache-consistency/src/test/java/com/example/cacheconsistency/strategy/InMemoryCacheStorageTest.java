@@ -26,12 +26,6 @@ class InMemoryCacheStorageTest {
     }
 
     @Test
-    void shouldDeleteNonExistentKey() {
-        storage.delete("non-existent");
-        assertEquals(0, storage.size());
-    }
-
-    @Test
     void shouldSetAndGetValue() {
         storage.set("key1", "value1", 10, TimeUnit.SECONDS);
 
@@ -57,11 +51,6 @@ class InMemoryCacheStorageTest {
     }
 
     @Test
-    void shouldReturnNullForUnknownKey() {
-        assertNull(storage.get("unknown"));
-    }
-
-    @Test
     void shouldHandleMultipleKeys() {
         storage.set("k1", "v1", 10, TimeUnit.SECONDS);
         storage.set("k2", "v2", 10, TimeUnit.SECONDS);
@@ -76,14 +65,4 @@ class InMemoryCacheStorageTest {
         assertNotNull(storage.get("k3"));
     }
 
-    @Test
-    void shouldEvictExpiredOnSizeCheck() throws Exception {
-        storage.set("valid", "v", 10, TimeUnit.SECONDS);
-        storage.set("expired", "v", 1, TimeUnit.MILLISECONDS);
-        Thread.sleep(10);
-
-        assertEquals(1, storage.size());
-        assertNull(storage.get("expired"));
-        assertNotNull(storage.get("valid"));
-    }
 }

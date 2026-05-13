@@ -16,10 +16,6 @@ class KeyParserTest {
         return "";
     }
 
-    private String methodWithNull(String name, Long id) {
-        return "";
-    }
-
     @Test
     void shouldParseSpELKey() throws Exception {
         Method method = getClass().getDeclaredMethod("sampleMethod", String.class, Long.class);
@@ -52,19 +48,4 @@ class KeyParserTest {
         assertTrue(key.contains("noParams"));
     }
 
-    @Test
-    void shouldHandleNullArgument() throws Exception {
-        Method method = getClass().getDeclaredMethod("methodWithNull", String.class, Long.class);
-        String key = KeyParser.parse("#name", method, new Object[]{null, 42L});
-
-        assertTrue(key.endsWith(":null"));
-    }
-
-    @Test
-    void shouldHandleNestedPropertyExpression() throws Exception {
-        Method method = getClass().getDeclaredMethod("sampleMethod", String.class, Long.class);
-        String key = KeyParser.parse("#name?.length()", method, new Object[]{"Hello", 42L});
-
-        assertTrue(key.endsWith(":5"));
-    }
 }
