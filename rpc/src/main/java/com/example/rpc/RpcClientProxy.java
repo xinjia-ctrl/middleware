@@ -1,18 +1,17 @@
 package com.example.rpc;
 
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
-import java.net.Socket;
 
-public class ClientProxy {
+public class RpcClientProxy {
 
+    private final RpcClient rpcClient;
     private final String host;
     private final int port;
 
-    public ClientProxy(String host, int port) {
+    public RpcClientProxy(RpcClient rpcClient, String host, int port) {
+        this.rpcClient = rpcClient;
         this.host = host;
         this.port = port;
     }
@@ -38,19 +37,12 @@ public class ClientProxy {
                     method.getParameterTypes(),
                     args);
 
-            try (Socket socket = new Socket(host, port)) {
-                ObjectOutputStream oos = new ObjectOutputStream(socket.getOutputStream());
-                oos.writeObject(request);
-                oos.flush();
+            RpcResponse response = rpcClient.sendRequest(request, host, port);
 
-                ObjectInputStream ois = new ObjectInputStream(socket.getInputStream());
-                RpcResponse response = (RpcResponse) ois.readObject();
-
-                if (!response.isSuccess()) {
-                    throw new RuntimeException(response.getMessage());
-                }
-                return response.getData();
+            if (!response.isSuccess()) {
+                throw new RuntimeException(response.getMessage());
             }
+            return response.getData();
         }
     }
 }
