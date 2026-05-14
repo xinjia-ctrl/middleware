@@ -9,6 +9,9 @@ public class RpcDemo {
         RpcClient transport = new NettyRpcClient();
         // RpcClient transport = new SimpleRpcClient();
 
+        // 一行切换序列化方式 —— 传入 JsonSerializer 即可
+        // RpcClient transport = new NettyRpcClient(new JsonSerializer());
+
         RpcClientProxy proxy = new RpcClientProxy(transport, "127.0.0.1", port);
 
         UserService userService = proxy.create(UserService.class);

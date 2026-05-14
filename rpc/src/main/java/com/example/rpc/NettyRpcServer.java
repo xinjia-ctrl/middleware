@@ -1,18 +1,11 @@
 package com.example.rpc;
 
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.buffer.ByteBuf;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.LengthFieldBasedFrameDecoder;
-import io.netty.handler.codec.MessageToByteEncoder;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -20,8 +13,17 @@ import java.util.concurrent.ConcurrentHashMap;
 public class NettyRpcServer {
 
     private final Map<String, Object> serviceMap = new ConcurrentHashMap<>();
+    private final Serializer serializer;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
+
+    public NettyRpcServer() {
+        this(new ObjectSerializer());
+    }
+
+    public NettyRpcServer(Serializer serializer) {
+        this.serializer = serializer;
+    }
 
     public void register(Class<?> interfaceClass, Object serviceImpl) {
         serviceMap.put(interfaceClass.getName(), serviceImpl);
@@ -41,9 +43,8 @@ public class NettyRpcServer {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ch.pipeline()
-                                .addLast(new RpcEncoder())
-                                .addLast(new LengthFieldBasedFrameDecoder(
-                                        Integer.MAX_VALUE, 0, 4, 0, 4))
+                                .addLast(new MyEncode(serializer))
+                                .addLast(new MyDecode())
                                 .addLast(new RpcServerHandler());
                     }
                 });
@@ -58,36 +59,10 @@ public class NettyRpcServer {
         System.out.println("NettyRpcServer stopped");
     }
 
-    @ChannelHandler.Sharable
-    private static class RpcEncoder extends MessageToByteEncoder<Object> {
-        @Override
-        protected void encode(ChannelHandlerContext ctx, Object msg, ByteBuf out) throws Exception {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            try (ObjectOutputStream oos = new ObjectOutputStream(bos)) {
-                oos.writeObject(msg);
-            }
-            byte[] bytes = bos.toByteArray();
-            out.writeInt(bytes.length);
-            out.writeBytes(bytes);
-        }
-    }
-
-    @ChannelHandler.Sharable
-    private class RpcServerHandler extends SimpleChannelInboundHandler<ByteBuf> {
+    private class RpcServerHandler extends SimpleChannelInboundHandler<RpcRequest> {
 
         @Override
-        protected void channelRead0(ChannelHandlerContext ctx, ByteBuf buf) {
-            byte[] bytes = new byte[buf.readableBytes()];
-            buf.readBytes(bytes);
-
-            RpcRequest request;
-            try (ObjectInputStream ois = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
-                request = (RpcRequest) ois.readObject();
-            } catch (Exception e) {
-                System.err.println("deserialize failed: " + e.getMessage());
-                return;
-            }
-
+        protected void channelRead0(ChannelHandlerContext ctx, RpcRequest request) {
             System.out.println("Received: " + request);
 
             RpcResponse response;
