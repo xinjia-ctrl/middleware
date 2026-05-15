@@ -1,18 +1,18 @@
 # circuit-breaker
 
-基于注解 + AOP 的 Spring Boot 熔断器中间件，支持三态转换和降级策略，开箱即用。
+基于注解 + AOP 的 Spring Boot 熔断器中间件，支持三态状态机与滑动窗口两种熔断策略。
 
 ## 功能特性
 
-- 三态转换：CLOSED（正常）→ OPEN（熔断）→ HALF_OPEN（半开）→ CLOSED
-- 失败计数熔断：连续失败达到阈值自动熔断
-- 超时恢复：熔断后自动进入半开状态尝试恢复
-- 三种拒绝策略：抛异常、静默拒绝、Fallback 降级
-- Key 隔离：支持 SpEL 表达式按接口 / 用户维度独立熔断
-- 半开限流：半开状态下只放行有限请求，避免雪崩
+- **双熔断策略**：计数器状态机（CLOSED→OPEN→HALF_OPEN）和滑动窗口（10s 窗口，按错误比例）
+- **三态转换**：CLOSED（正常）→ OPEN（熔断）→ HALF_OPEN（半开探活）→ CLOSED
+- **半开限流**：半开状态下只放行有限探活请求，防止雪崩
+- **半开超时逃生**：探活请求超时未完成时自动回到 OPEN，防止永久卡死
+- **三种拒绝策略**：抛异常、静默拒绝、Fallback 降级
+- **Key 隔离**：支持 SpEL 表达式按接口/用户维度独立熔断
 - Spring Boot 自动装配
 
-## 状态说明
+## 状态机
 
 ```
 CLOSED (正常)
@@ -20,7 +20,7 @@ CLOSED (正常)
   │  ───────────────────────────► OPEN (熔断)
   │                               │
   │                               │  timeout 后 → HALF_OPEN (半开)
-  │                               │  放行 successThreshold 个请求
+  │                               │  放行 successThreshold 个探活请求
   │                               │
   │  successCount >= successThreshold
   │  ◄────────────────────────────┘
@@ -51,30 +51,28 @@ CLOSED (正常)
 @RestController
 public class DemoController {
 
-    // 基础熔断：3次失败后熔断，5秒后尝试恢复，2次成功则关闭
+    // 计数器熔断：3次失败后熔断，5秒后半开，2次连续成功则恢复
     @GetMapping("/api")
     @CircuitBreaker(failureThreshold = 3, successThreshold = 2, timeout = 5)
     public String api() {
-        // 调用外部服务
         return restTemplate.getForObject("http://external/api", String.class);
     }
 
-    // 熔断时走 Fallback 降级
+    // 熔断时走 Fallback 降级（CALLER_RUNS）
     @GetMapping("/api2")
-    @CircuitBreaker(failureThreshold = 3, fallback = "myFallback")
-    public String api2() {
-        return remoteCall();
-    }
-    public String myFallback() {
-        return "服务繁忙，返回缓存数据";
-    }
+    @CircuitBreaker(failureThreshold = 3, rejectedStrategy = CALLER_RUNS, fallback = "myFallback")
+    public String api2() { return remoteCall(); }
+    public String myFallback() { return "服务繁忙，返回缓存数据"; }
 
-    // 熔断时静默返回 null（不抛异常）
+    // 滑动窗口熔断：10s内失败比例超 50% 且请求数超 10 则熔断
     @GetMapping("/api3")
-    @CircuitBreaker(failureThreshold = 3, rejectedStrategy = RejectedStrategy.SILENT)
-    public String api3() {
-        return remoteCall();
-    }
+    @CircuitBreaker(failureThreshold = 10, message = "服务异常")
+    public String api3() { return remoteCall(); }
+
+    // 熔断时静默返回 null
+    @GetMapping("/api4")
+    @CircuitBreaker(failureThreshold = 3, rejectedStrategy = SILENT)
+    public String api4() { return remoteCall(); }
 }
 ```
 
@@ -84,9 +82,9 @@ public class DemoController {
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `failureThreshold` | `int` | `5` | 触发熔断的失败次数阈值 |
+| `failureThreshold` | `int` | `5` | 触发熔断的失败次数/最小请求数 |
 | `successThreshold` | `int` | `3` | 半开状态下关闭所需的连续成功次数 |
-| `timeout` | `long` | `10` | 熔断后进入半开的等待时间 |
+| `timeout` | `long` | `10` | 熔断持续时间 |
 | `timeUnit` | `TimeUnit` | `SECONDS` | 超时时间单位 |
 | `rejectedStrategy` | `RejectedStrategy` | `ABORT` | 熔断时的拒绝策略 |
 | `fallback` | `String` | `""` | 降级方法名 |
@@ -107,19 +105,17 @@ public class DemoController {
 circuit-breaker/
 ├── annotation/    @CircuitBreaker 注解
 ├── aspect/        AOP 切面
-├── strategy/      熔断状态机和拒绝策略
+├── strategy/      状态机 + 滑动窗口 + 拒绝策略
 ├── config/        自动配置和异常处理
 ├── exception/     熔断异常
-├── controller/    测试接口
-└── util/          SpEL Key 解析
+├── util/          SpEL Key 解析
+└── controller/    测试接口
 ```
 
 ## 技术栈
 
-- Spring Boot 3.4.3
-- Spring AOP
-- Spring Data Redis + Lettuce（可选）
-- Lua（可选）
+- Spring Boot 3.4.3 + Spring AOP
+- SpEL
 
 ## 许可证
 
