@@ -16,7 +16,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(Map.of(
-                        "code", 503,
+                        "code", HttpStatus.SERVICE_UNAVAILABLE.value(),
                         "message", e.getMessage()
                 ));
     }

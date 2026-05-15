@@ -1,5 +1,8 @@
 package com.example.circuitbreaker.strategy;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -7,10 +10,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class CircuitBreakerStateMachine {
 
+    private static final Logger log = LoggerFactory.getLogger(CircuitBreakerStateMachine.class);
+
     private final Map<String, CircuitBreakerTask> taskMap = new ConcurrentHashMap<>();
 
     public boolean tryAcquire(String key, int failureThreshold, int successThreshold, long timeout, TimeUnit timeUnit) {
-        CircuitBreakerTask task = taskMap.computeIfAbsent(key, k -> new CircuitBreakerTask(failureThreshold, successThreshold, timeout, timeUnit));
+        CircuitBreakerTask task = taskMap.computeIfAbsent(key,
+                k -> new CircuitBreakerTask(failureThreshold, successThreshold, timeout, timeUnit));
         return task.tryAcquire();
     }
 
@@ -67,11 +73,19 @@ public class CircuitBreakerStateMachine {
                 case OPEN:
                     if (now - lastStateChangeTime >= timeoutNanos) {
                         if (tryTransition(CircuitBreakerState.OPEN, CircuitBreakerState.HALF_OPEN, now)) {
+                            log.debug("circuit half-open: allowing probe request");
                             return true;
                         }
                     }
                     return false;
                 case HALF_OPEN:
+                    // timeout escape from HALF_OPEN — prevents permanent stuck if probes never complete
+                    if (now - lastStateChangeTime >= timeoutNanos) {
+                        if (tryTransition(CircuitBreakerState.HALF_OPEN, CircuitBreakerState.OPEN, now)) {
+                            log.debug("circuit half-open timeout, back to open");
+                        }
+                        return false;
+                    }
                     return halfOpenPermits.decrementAndGet() >= 0;
                 default:
                     return false;
@@ -87,7 +101,8 @@ public class CircuitBreakerStateMachine {
                     break;
                 case HALF_OPEN:
                     if (successCount.incrementAndGet() >= successThreshold) {
-                        resetToClosed();
+                        transitionTo(CircuitBreakerState.CLOSED, System.nanoTime());
+                        log.info("circuit closed after half-open success threshold reached");
                     }
                     break;
                 default:
@@ -103,52 +118,39 @@ public class CircuitBreakerStateMachine {
                 case CLOSED:
                     if (failureCount.incrementAndGet() >= failureThreshold) {
                         transitionTo(CircuitBreakerState.OPEN, now);
+                        log.warn("circuit opened after {} failures", failureThreshold);
                     }
                     break;
                 case HALF_OPEN:
                     transitionTo(CircuitBreakerState.OPEN, now);
+                    log.warn("circuit re-opened after half-open probe failure");
                     break;
                 case OPEN:
                     break;
             }
         }
 
-        private boolean tryTransition(CircuitBreakerState from, CircuitBreakerState to, long now) {
-            synchronized (this) {
-                if (this.state == from) {
-                    this.state = to;
-                    this.lastStateChangeTime = now;
-                    this.successCount.set(0);
-                    if (to == CircuitBreakerState.HALF_OPEN) {
-                        halfOpenPermits.set(successThreshold);
-                    } else if (to == CircuitBreakerState.CLOSED) {
-                        this.failureCount.set(0);
-                    }
-                    return true;
-                }
-                return false;
+        private synchronized boolean tryTransition(CircuitBreakerState from, CircuitBreakerState to, long now) {
+            if (this.state == from) {
+                doTransition(to, now);
+                return true;
             }
+            return false;
         }
 
-        private void transitionTo(CircuitBreakerState newState, long now) {
+        private synchronized void transitionTo(CircuitBreakerState newState, long now) {
+            doTransition(newState, now);
+        }
+
+        private void doTransition(CircuitBreakerState newState, long now) {
             this.state = newState;
             this.lastStateChangeTime = now;
-            if (newState == CircuitBreakerState.OPEN) {
-                this.successCount.set(0);
-                this.halfOpenPermits.set(0);
-            } else if (newState == CircuitBreakerState.CLOSED) {
-                this.failureCount.set(0);
-                this.successCount.set(0);
-                this.halfOpenPermits.set(0);
-            }
-        }
-
-        private void resetToClosed() {
-            this.state = CircuitBreakerState.CLOSED;
-            this.lastStateChangeTime = System.nanoTime();
             this.failureCount.set(0);
             this.successCount.set(0);
             this.halfOpenPermits.set(0);
+            if (newState == CircuitBreakerState.HALF_OPEN) {
+                halfOpenPermits.set(successThreshold);
+            }
         }
 
         CircuitBreakerState getState() {
