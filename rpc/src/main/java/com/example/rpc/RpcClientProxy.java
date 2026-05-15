@@ -9,11 +9,20 @@ public class RpcClientProxy {
     private final RpcClient rpcClient;
     private final String host;
     private final int port;
+    private final ServiceDiscovery discovery;
 
     public RpcClientProxy(RpcClient rpcClient, String host, int port) {
         this.rpcClient = rpcClient;
         this.host = host;
         this.port = port;
+        this.discovery = null;
+    }
+
+    public RpcClientProxy(RpcClient rpcClient, ServiceDiscovery discovery) {
+        this.rpcClient = rpcClient;
+        this.host = null;
+        this.port = 0;
+        this.discovery = discovery;
     }
 
     @SuppressWarnings("unchecked")
@@ -37,12 +46,21 @@ public class RpcClientProxy {
                     method.getParameterTypes(),
                     args);
 
-            RpcResponse response = rpcClient.sendRequest(request, host, port);
-
-            if (!response.isSuccess()) {
-                throw new RuntimeException(response.getMessage());
+            if (discovery != null) {
+                String address = discovery.discover(method.getDeclaringClass().getName());
+                String[] parts = address.split(":");
+                RpcResponse response = rpcClient.sendRequest(request, parts[0], Integer.parseInt(parts[1]));
+                if (!response.isSuccess()) {
+                    throw new RuntimeException(response.getMessage());
+                }
+                return response.getData();
+            } else {
+                RpcResponse response = rpcClient.sendRequest(request, host, port);
+                if (!response.isSuccess()) {
+                    throw new RuntimeException(response.getMessage());
+                }
+                return response.getData();
             }
-            return response.getData();
         }
     }
 }

@@ -3,16 +3,12 @@ package com.example.rpc;
 public class RpcDemo {
 
     public static void main(String[] args) throws Exception {
-        int port = args.length > 0 ? Integer.parseInt(args[0]) : 8080;
+        String zkAddr = args.length > 0 ? args[0] : "127.0.0.1:2181";
 
-        // 一行切换通信方式 —— 注释/取消注释即可
+        ServiceDiscovery discovery = new ServiceDiscovery(zkAddr);
+
         RpcClient transport = new NettyRpcClient();
-        // RpcClient transport = new SimpleRpcClient();
-
-        // 一行切换序列化方式 —— 传入 JsonSerializer 即可
-        // RpcClient transport = new NettyRpcClient(new JsonSerializer());
-
-        RpcClientProxy proxy = new RpcClientProxy(transport, "127.0.0.1", port);
+        RpcClientProxy proxy = new RpcClientProxy(transport, discovery);
 
         UserService userService = proxy.create(UserService.class);
         System.out.println(userService.getUserByUserId(1));
@@ -22,5 +18,6 @@ public class RpcDemo {
         System.out.println(orderService.getOrderCount(5));
 
         transport.close();
+        discovery.close();
     }
 }

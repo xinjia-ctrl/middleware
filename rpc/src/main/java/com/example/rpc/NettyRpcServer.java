@@ -7,27 +7,21 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 import java.lang.reflect.Method;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class NettyRpcServer {
 
-    private final Map<String, Object> serviceMap = new ConcurrentHashMap<>();
+    private final ServiceProvider serviceProvider;
     private final Serializer serializer;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
-    public NettyRpcServer() {
-        this(new ObjectSerializer());
+    public NettyRpcServer(ServiceProvider serviceProvider) {
+        this(serviceProvider, new ObjectSerializer());
     }
 
-    public NettyRpcServer(Serializer serializer) {
+    public NettyRpcServer(ServiceProvider serviceProvider, Serializer serializer) {
+        this.serviceProvider = serviceProvider;
         this.serializer = serializer;
-    }
-
-    public void register(Class<?> interfaceClass, Object serviceImpl) {
-        serviceMap.put(interfaceClass.getName(), serviceImpl);
-        System.out.println("register service: " + interfaceClass.getName());
     }
 
     public void start(int port) {
@@ -67,7 +61,7 @@ public class NettyRpcServer {
 
             RpcResponse response;
             try {
-                Object serviceImpl = serviceMap.get(request.getInterfaceName());
+                Object serviceImpl = serviceProvider.getService(request.getInterfaceName());
                 if (serviceImpl == null) {
                     response = new RpcResponse(500, null,
                             "service not found: " + request.getInterfaceName());
