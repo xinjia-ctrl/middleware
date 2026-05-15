@@ -6,22 +6,32 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 
+import io.netty.handler.timeout.IdleStateHandler;
+
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 public class NettyRpcServer {
 
     private final ServiceProvider serviceProvider;
     private final Serializer serializer;
+    private final List<RpcFilter> filters;
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
 
     public NettyRpcServer(ServiceProvider serviceProvider) {
-        this(serviceProvider, new ObjectSerializer());
+        this(serviceProvider, new ObjectSerializer(), List.of());
     }
 
     public NettyRpcServer(ServiceProvider serviceProvider, Serializer serializer) {
+        this(serviceProvider, serializer, List.of());
+    }
+
+    public NettyRpcServer(ServiceProvider serviceProvider, Serializer serializer, List<RpcFilter> filters) {
         this.serviceProvider = serviceProvider;
         this.serializer = serializer;
+        this.filters = filters;
     }
 
     public void start(int port) {
@@ -39,7 +49,9 @@ public class NettyRpcServer {
                         ch.pipeline()
                                 .addLast(new MyEncode(serializer))
                                 .addLast(new MyDecode())
-                                .addLast(new RpcServerHandler(serviceProvider));
+                                .addLast(new IdleStateHandler(15, 0, 0, TimeUnit.SECONDS))
+                                .addLast(new RpcHeartbeatHandler(true))
+                                .addLast(new RpcServerHandler(serviceProvider, filters));
                     }
                 });
 
@@ -56,9 +68,11 @@ public class NettyRpcServer {
     private static class RpcServerHandler extends SimpleChannelInboundHandler<RpcRequest> {
 
         private final ServiceProvider serviceProvider;
+        private final List<RpcFilter> filters;
 
-        RpcServerHandler(ServiceProvider serviceProvider) {
+        RpcServerHandler(ServiceProvider serviceProvider, List<RpcFilter> filters) {
             this.serviceProvider = serviceProvider;
+            this.filters = filters;
         }
 
         @Override
@@ -66,8 +80,16 @@ public class NettyRpcServer {
             System.out.println("Received: " + request);
 
             RpcResponse response = new RpcResponse();
+            response.setRequestId(request.getRequestId());
 
             try {
+                for (RpcFilter filter : filters) {
+                    if (!filter.before(request, response)) {
+                        ctx.writeAndFlush(response);
+                        return;
+                    }
+                }
+
                 Object serviceImpl = serviceProvider.getService(request.getInterfaceName());
                 if (serviceImpl == null) {
                     response.setCode(500);
@@ -84,7 +106,11 @@ public class NettyRpcServer {
                 response.setCode(500);
                 response.setMessage(cause.getMessage());
             }
-            response.setRequestId(request.getRequestId());
+
+            for (RpcFilter filter : filters) {
+                filter.after(request, response);
+            }
+
             ctx.writeAndFlush(response);
         }
 

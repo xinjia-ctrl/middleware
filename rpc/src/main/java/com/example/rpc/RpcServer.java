@@ -1,5 +1,7 @@
 package com.example.rpc;
 
+import java.util.List;
+
 public class RpcServer {
 
     public static void main(String[] args) throws Exception {
@@ -11,7 +13,13 @@ public class RpcServer {
         provider.addService(UserService.class, new UserServiceImpl());
         provider.addService(OrderService.class, new OrderServiceImpl());
 
-        NettyRpcServer server = RpcBootstrap.createServer(provider);
+        List<RpcFilter> filters = List.of(
+                new RpcRateLimitFilter(),
+                new RpcCircuitBreakerFilter(),
+                new RpcIdempotentFilter()
+        );
+
+        NettyRpcServer server = RpcBootstrap.createServer(provider, new ObjectSerializer(), filters);
         server.start(port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {

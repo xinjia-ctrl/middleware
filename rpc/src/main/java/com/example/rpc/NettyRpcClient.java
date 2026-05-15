@@ -5,6 +5,7 @@ import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.timeout.IdleStateHandler;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -59,6 +60,8 @@ public class NettyRpcClient implements RpcClient {
                         ch.pipeline()
                                 .addLast(new MyEncode(serializer))
                                 .addLast(new MyDecode())
+                                .addLast(new IdleStateHandler(0, 5, 0, TimeUnit.SECONDS))
+                                .addLast(new RpcHeartbeatHandler(false))
                                 .addLast(new SimpleChannelInboundHandler<RpcResponse>() {
                                     @Override
                                     protected void channelRead0(ChannelHandlerContext ctx, RpcResponse response) {

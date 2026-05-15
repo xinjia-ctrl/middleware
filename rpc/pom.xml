@@ -60,5 +60,20 @@
             <artifactId>netty-transport</artifactId>
             <version>4.1.128.Final</version>
         </dependency>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>rate-limiter</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>idempotent</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>com.example</groupId>
+            <artifactId>circuit-breaker</artifactId>
+            <version>1.0-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 </project>

@@ -44,6 +44,11 @@ public class MyDecode extends ByteToMessageDecoder {
             throw new RuntimeException("unknown serializer type: " + serializerType);
         }
 
+        if (messageType == MessageType.HEARTBEAT) {
+            out.add(RpcHeartbeat.INSTANCE);
+            return;
+        }
+
         Class<?> targetClass;
         if (messageType == MessageType.REQUEST) {
             targetClass = RpcRequest.class;

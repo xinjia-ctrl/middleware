@@ -66,7 +66,7 @@ public class CircuitBreakerStateMachine {
                     return true;
                 case OPEN:
                     if (now - lastStateChangeTime >= timeoutNanos) {
-                        if (tryTransition(OPEN, HALF_OPEN, now)) {
+                        if (tryTransition(CircuitBreakerState.OPEN, CircuitBreakerState.HALF_OPEN, now)) {
                             return true;
                         }
                     }
@@ -102,11 +102,11 @@ public class CircuitBreakerStateMachine {
             switch (currentState) {
                 case CLOSED:
                     if (failureCount.incrementAndGet() >= failureThreshold) {
-                        transitionTo(OPEN, now);
+                        transitionTo(CircuitBreakerState.OPEN, now);
                     }
                     break;
                 case HALF_OPEN:
-                    transitionTo(OPEN, now);
+                    transitionTo(CircuitBreakerState.OPEN, now);
                     break;
                 case OPEN:
                     break;

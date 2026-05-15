@@ -14,6 +14,13 @@ public class MyEncode extends MessageToByteEncoder<Object> {
 
     @Override
     protected void encode(ChannelHandlerContext ctx, Object msg, ByteBuf out) throws Exception {
+        if (msg instanceof RpcHeartbeat) {
+            out.writeShort(MessageType.HEARTBEAT);
+            out.writeShort(0);
+            out.writeInt(0);
+            return;
+        }
+
         short messageType;
         if (msg instanceof RpcRequest) {
             messageType = MessageType.REQUEST;
