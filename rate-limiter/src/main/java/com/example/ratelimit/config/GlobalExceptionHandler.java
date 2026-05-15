@@ -16,7 +16,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(Map.of(
-                        "code", 429,
+                        "code", HttpStatus.TOO_MANY_REQUESTS.value(),
                         "message", e.getMessage()
                 ));
     }

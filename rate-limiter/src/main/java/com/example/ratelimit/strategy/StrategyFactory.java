@@ -52,6 +52,8 @@ public class StrategyFactory {
                     new RedisTokenBucketStrategy(redisTemplate, annotation.permitsPerSecond(), annotation.capacity());
             case LEAKY_BUCKET ->
                     new RedisLeakyBucketStrategy(redisTemplate, annotation.leakRate(), annotation.leakCapacity());
+            case LOCK_FREE ->
+                    throw new IllegalArgumentException("LOCK_FREE does not support DISTRIBUTED mode");
         };
     }
 
@@ -65,6 +67,8 @@ public class StrategyFactory {
                     new TokenBucketStrategy(annotation.permitsPerSecond(), annotation.capacity());
             case LEAKY_BUCKET ->
                     new LeakyBucketStrategy(annotation.leakRate(), annotation.leakCapacity());
+            case LOCK_FREE ->
+                    new LockFreeRateLimiter(annotation.permitsPerSecond());
         };
     }
 }

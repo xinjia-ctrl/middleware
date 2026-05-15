@@ -4,15 +4,12 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 public class SlidingWindowStrategy implements RateLimitStrategy {
 
     private final long maxPermits;
     private final long windowMillis;
     private final Map<String, SlidingWindow> windowMap = new ConcurrentHashMap<>();
-    private final Lock lock = new ReentrantLock();
 
     public SlidingWindowStrategy(long maxPermits, long window, TimeUnit timeUnit) {
         this.maxPermits = maxPermits;
@@ -24,16 +21,13 @@ public class SlidingWindowStrategy implements RateLimitStrategy {
         long now = System.currentTimeMillis();
         SlidingWindow window = windowMap.computeIfAbsent(key, k -> new SlidingWindow());
 
-        lock.lock();
-        try {
+        synchronized (window) {
             window.cleanup(now - windowMillis);
-            if (window.totalCount() + permits <= maxPermits) {
+            if (window.total + permits <= maxPermits) {
                 window.add(now, permits);
                 return true;
             }
             return false;
-        } finally {
-            lock.unlock();
         }
     }
 
@@ -57,10 +51,6 @@ public class SlidingWindowStrategy implements RateLimitStrategy {
                 total -= count;
             }
             head.clear();
-        }
-
-        int totalCount() {
-            return total;
         }
     }
 }

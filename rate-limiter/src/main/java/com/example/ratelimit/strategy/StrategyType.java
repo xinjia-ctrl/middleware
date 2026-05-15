@@ -4,5 +4,6 @@ public enum StrategyType {
     TOKEN_BUCKET,
     FIXED_WINDOW,
     SLIDING_WINDOW,
-    LEAKY_BUCKET
+    LEAKY_BUCKET,
+    LOCK_FREE
 }

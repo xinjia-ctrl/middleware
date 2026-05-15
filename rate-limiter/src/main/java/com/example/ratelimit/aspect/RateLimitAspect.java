@@ -2,18 +2,21 @@ package com.example.ratelimit.aspect;
 
 import com.example.ratelimit.annotation.RateLimit;
 import com.example.ratelimit.exception.RateLimitException;
-import com.example.ratelimit.strategy.RejectedStrategy;
 import com.example.ratelimit.strategy.StrategyFactory;
 import com.example.ratelimit.util.KeyParser;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
 
 @Aspect
 public class RateLimitAspect {
+
+    private static final Logger log = LoggerFactory.getLogger(RateLimitAspect.class);
 
     private final StrategyFactory strategyFactory;
 
@@ -25,10 +28,6 @@ public class RateLimitAspect {
     public Object around(ProceedingJoinPoint pjp) throws Throwable {
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
         RateLimit annotation = method.getAnnotation(RateLimit.class);
-
-        if (annotation == null) {
-            return pjp.proceed();
-        }
 
         String key = KeyParser.parse(annotation.key(), method, pjp.getArgs());
 
@@ -54,9 +53,25 @@ public class RateLimitAspect {
         if (fallback.isBlank()) {
             throw new RateLimitException(annotation.message());
         }
-        Method fallbackMethod = pjp.getTarget().getClass()
-                .getDeclaredMethod(fallback, method.getParameterTypes());
-        fallbackMethod.setAccessible(true);
+        Method fallbackMethod = findFallbackMethod(pjp.getTarget().getClass(), fallback, method.getParameterTypes());
+        if (fallbackMethod == null) {
+            throw new RateLimitException("fallback method '" + fallback + "' not found");
+        }
         return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
+    }
+
+    private Method findFallbackMethod(Class<?> targetClass, String name, Class<?>[] paramTypes) {
+        Class<?> current = targetClass;
+        while (current != null && current != Object.class) {
+            try {
+                Method method = current.getDeclaredMethod(name, paramTypes);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException e) {
+                current = current.getSuperclass();
+            }
+        }
+        log.warn("fallback method '{}' not found in {} or its parents", name, targetClass);
+        return null;
     }
 }
