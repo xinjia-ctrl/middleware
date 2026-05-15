@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ServiceProvider {
 
     private final Map<String, Object> serviceMap = new ConcurrentHashMap<>();
+    private final Map<String, Class<?>> interfaceMap = new ConcurrentHashMap<>();
     private final ServiceRegister register;
     private final String serverAddress;
 
@@ -19,11 +20,16 @@ public class ServiceProvider {
     public void addService(Class<?> interfaceClass, Object impl) {
         String name = interfaceClass.getName();
         serviceMap.put(name, impl);
+        interfaceMap.put(name, interfaceClass);
         register.register(name, serverAddress);
     }
 
     public Object getService(String name) {
         return serviceMap.get(name);
+    }
+
+    public Class<?> getInterfaceClass(String name) {
+        return interfaceMap.get(name);
     }
 
     public void close() {

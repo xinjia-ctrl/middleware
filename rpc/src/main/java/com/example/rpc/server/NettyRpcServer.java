@@ -19,8 +19,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class NettyRpcServer {
@@ -34,6 +36,7 @@ public class NettyRpcServer {
     private static final long PER_CONN_INTERVAL_NS = 1_000_000L; // 1000 rps per connection
 
     private static final AttributeKey<AtomicLong> CHANNEL_LIMITER = AttributeKey.valueOf("channelLimiter");
+    private static final AttributeKey<AtomicInteger> CHANNEL_PERMITS = AttributeKey.valueOf("channelPermits");
 
     private final ServiceProvider serviceProvider;
     private final Serializer serializer;
@@ -74,6 +77,7 @@ public class NettyRpcServer {
                     @Override
                     protected void initChannel(SocketChannel ch) {
                         ch.attr(CHANNEL_LIMITER).set(new AtomicLong(0));
+                        ch.attr(CHANNEL_PERMITS).set(new AtomicInteger(0));
                         ch.pipeline()
                                 .addLast(new MyEncode(serializer))
                                 .addLast(new MyDecode())
@@ -111,6 +115,11 @@ public class NettyRpcServer {
                 return;
             }
 
+            AtomicInteger channelPermits = ctx.channel().attr(CHANNEL_PERMITS).get();
+            if (channelPermits != null) {
+                channelPermits.incrementAndGet();
+            }
+
             // 第二层：连接级速率限流（CAS 无锁）
             AtomicLong channelLimiter = ctx.channel().attr(CHANNEL_LIMITER).get();
             if (channelLimiter != null) {
@@ -118,6 +127,8 @@ public class NettyRpcServer {
                 while (true) {
                     long pre = channelLimiter.get();
                     if (pre > now) {
+                        // 未通过通道限流，归还许可
+                        if (channelPermits != null) channelPermits.decrementAndGet();
                         globalLimiter.release();
                         RpcResponse response = new RpcResponse();
                         response.setRequestId(request.getRequestId());
@@ -137,6 +148,8 @@ public class NettyRpcServer {
             try {
                 invokeExecutor.submit(() -> processRequest(ctx, request));
             } catch (RejectedExecutionException e) {
+                // 线程池满，归还许可
+                if (channelPermits != null) channelPermits.decrementAndGet();
                 globalLimiter.release();
                 RpcResponse response = new RpcResponse();
                 response.setRequestId(request.getRequestId());
@@ -151,11 +164,14 @@ public class NettyRpcServer {
             RpcResponse response = new RpcResponse();
             response.setRequestId(request.getRequestId());
 
+            List<RpcFilter> passedFilters = new ArrayList<>();
+
             try {
                 for (RpcFilter filter : filters) {
                     if (!filter.before(request, response)) {
                         return;
                     }
+                    passedFilters.add(filter);
                 }
 
                 Object serviceImpl = serviceProvider.getService(request.getInterfaceName());
@@ -163,11 +179,17 @@ public class NettyRpcServer {
                     response.setCode(500);
                     response.setMessage("service not found: " + request.getInterfaceName());
                 } else {
-                    Method method = serviceImpl.getClass().getMethod(
-                            request.getMethodName(), request.getParameterTypes());
-                    Object result = method.invoke(serviceImpl, request.getParameters());
-                    response.setCode(200);
-                    response.setData(result);
+                    Class<?> interfaceClass = serviceProvider.getInterfaceClass(request.getInterfaceName());
+                    if (interfaceClass == null) {
+                        response.setCode(500);
+                        response.setMessage("interface not registered: " + request.getInterfaceName());
+                    } else {
+                        Method method = interfaceClass.getMethod(
+                                request.getMethodName(), request.getParameterTypes());
+                        Object result = method.invoke(serviceImpl, request.getParameters());
+                        response.setCode(200);
+                        response.setData(result);
+                    }
                 }
             } catch (Exception e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -175,12 +197,31 @@ public class NettyRpcServer {
                 response.setMessage(cause.getMessage());
                 log.error("invoke error: {}", request, cause);
             } finally {
-                for (RpcFilter filter : filters) {
+                // 仅对 passed 的 filter 执行 after，避免误记（如限流拒绝的 429 被熔断器记为失败）
+                for (RpcFilter filter : passedFilters) {
                     filter.after(request, response);
                 }
-                globalLimiter.release();
-                ctx.writeAndFlush(response);
+                // 响应写完异步归还许可，避免 release 后 write 前并发超标
+                ctx.writeAndFlush(response).addListener(f -> {
+                    globalLimiter.release();
+                    AtomicInteger cp = ctx.channel().attr(CHANNEL_PERMITS).get();
+                    if (cp != null) cp.decrementAndGet();
+                });
             }
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            // 客户端断连时清理残留许可，防止 Semaphore 泄漏
+            AtomicInteger cp = ctx.channel().attr(CHANNEL_PERMITS).getAndSet(new AtomicInteger(0));
+            if (cp != null) {
+                int remaining = cp.getAndSet(0);
+                if (remaining > 0) {
+                    globalLimiter.release(remaining);
+                    log.warn("released {} leaked permits from disconnected channel", remaining);
+                }
+            }
+            ctx.fireChannelInactive();
         }
     }
 

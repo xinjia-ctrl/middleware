@@ -39,7 +39,15 @@ public class NettyRpcClient implements RpcClient {
 
     @Override
     public RpcResponse sendRequest(RpcRequest request, String host, int port) {
-        Channel channel = channelCache.computeIfAbsent(host + ":" + port, k -> createChannel(host, port));
+        String key = host + ":" + port;
+        Channel channel = channelCache.get(key);
+        if (channel == null || !channel.isActive()) {
+            if (channel != null) {
+                channel.close();
+            }
+            channel = createChannel(host, port);
+            channelCache.put(key, channel);
+        }
 
         long requestId = requestIdGen.incrementAndGet();
         request.setRequestId(requestId);
