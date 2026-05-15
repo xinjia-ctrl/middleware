@@ -31,14 +31,19 @@ public class CacheConsistentAutoConfiguration {
         return new InMemoryCacheStorage();
     }
 
-    @Bean
-    public CacheConsistentAspect cacheConsistentAspect(CacheStorage cacheStorage,
-                                                       CacheConsistentProperties properties) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+    @Bean(destroyMethod = "shutdown")
+    public ScheduledExecutorService cacheConsistencyScheduler() {
+        return Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "cache-consistency-scheduler");
             t.setDaemon(true);
             return t;
         });
+    }
+
+    @Bean
+    public CacheConsistentAspect cacheConsistentAspect(CacheStorage cacheStorage,
+                                                       CacheConsistentProperties properties,
+                                                       ScheduledExecutorService scheduler) {
         return new CacheConsistentAspect(cacheStorage, scheduler, properties.getKeyPrefix());
     }
 }

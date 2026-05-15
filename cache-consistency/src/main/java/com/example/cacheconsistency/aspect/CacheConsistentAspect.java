@@ -36,24 +36,18 @@ public class CacheConsistentAspect {
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
         CacheConsistent annotation = method.getAnnotation(CacheConsistent.class);
 
-        if (annotation == null) {
-            return pjp.proceed();
-        }
-
         String cacheKey = keyPrefix + KeyParser.parse(annotation.key(), method, pjp.getArgs());
 
-        if (annotation.strategy() == CacheConsistentStrategy.DOUBLE_DELETE) {
-            return handleDoubleDelete(pjp, cacheKey, annotation);
-        }
+        return switch (annotation.strategy()) {
+            case DOUBLE_DELETE -> handleDoubleDelete(pjp, cacheKey, annotation);
+            case EVICT_AFTER -> handleEvictAfter(pjp, cacheKey, annotation);
+        };
+    }
 
+    private Object handleEvictAfter(ProceedingJoinPoint pjp, String cacheKey, CacheConsistent annotation) throws Throwable {
         if (annotation.action() == CacheAction.PUT) {
             return handlePut(pjp, cacheKey, annotation);
         }
-
-        return handleEvictAfter(pjp, cacheKey);
-    }
-
-    private Object handleEvictAfter(ProceedingJoinPoint pjp, String cacheKey) throws Throwable {
         try {
             return pjp.proceed();
         } finally {
@@ -63,7 +57,7 @@ public class CacheConsistentAspect {
 
     private Object handlePut(ProceedingJoinPoint pjp, String cacheKey, CacheConsistent annotation) throws Throwable {
         Object result = pjp.proceed();
-        String value = serializeResult(result, annotation);
+        String value = serializeResult(result);
         cacheStorage.set(cacheKey, value, annotation.ttl(), annotation.timeUnit());
         return result;
     }
@@ -72,7 +66,12 @@ public class CacheConsistentAspect {
         cacheStorage.delete(cacheKey);
 
         try {
-            return pjp.proceed();
+            Object result = pjp.proceed();
+            if (annotation.action() == CacheAction.PUT) {
+                String value = serializeResult(result);
+                cacheStorage.set(cacheKey, value, annotation.ttl(), annotation.timeUnit());
+            }
+            return result;
         } finally {
             cacheStorage.delete(cacheKey);
             scheduler.schedule(() -> cacheStorage.delete(cacheKey),
@@ -80,7 +79,7 @@ public class CacheConsistentAspect {
         }
     }
 
-    private String serializeResult(Object result, CacheConsistent annotation) {
+    private String serializeResult(Object result) {
         if (result instanceof String) {
             return (String) result;
         }
