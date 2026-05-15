@@ -10,13 +10,12 @@ public class RedisIdempotentStorage implements IdempotentStorage {
 
     private static final String LOCK_KEY_PREFIX = "idempotent:";
     private static final String RESULT_KEY_PREFIX = "idempotent:result:";
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final StringRedisTemplate redisTemplate;
-    private final ObjectMapper objectMapper;
 
     public RedisIdempotentStorage(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
-        this.objectMapper = new ObjectMapper();
     }
 
     @Override
@@ -36,10 +35,11 @@ public class RedisIdempotentStorage implements IdempotentStorage {
     @Override
     public void saveResult(String key, Object result, long ttl, TimeUnit timeUnit) {
         try {
-            String json = objectMapper.writeValueAsString(result);
+            CacheEntry entry = new CacheEntry(result.getClass().getName(), OBJECT_MAPPER.writeValueAsString(result));
+            String json = OBJECT_MAPPER.writeValueAsString(entry);
             redisTemplate.opsForValue().set(RESULT_KEY_PREFIX + key, json, ttl, timeUnit);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("序列化幂等结果失败", e);
+            throw new RuntimeException("Failed to serialize idempotent result", e);
         }
     }
 
@@ -50,9 +50,14 @@ public class RedisIdempotentStorage implements IdempotentStorage {
             return null;
         }
         try {
-            return objectMapper.readValue(json, Object.class);
-        } catch (JsonProcessingException e) {
+            CacheEntry entry = OBJECT_MAPPER.readValue(json, CacheEntry.class);
+            Class<?> clazz = Class.forName(entry.type);
+            return OBJECT_MAPPER.readValue(entry.data, clazz);
+        } catch (Exception e) {
             return null;
         }
+    }
+
+    private record CacheEntry(String type, String data) {
     }
 }

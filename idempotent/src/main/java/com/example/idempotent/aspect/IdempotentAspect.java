@@ -24,10 +24,7 @@ public class IdempotentAspect {
     public Object around(ProceedingJoinPoint pjp) throws Throwable {
         Method method = ((MethodSignature) pjp.getSignature()).getMethod();
         Idempotent annotation = method.getAnnotation(Idempotent.class);
-
-        if (annotation == null) {
-            return pjp.proceed();
-        }
+        // annotation guaranteed non-null by @Around pointcut
 
         String key = KeyParser.parse(annotation.key(), method, pjp.getArgs());
         boolean saved = storage.trySave(key, annotation.ttl(), annotation.timeUnit());
@@ -48,7 +45,7 @@ public class IdempotentAspect {
                 storage.saveResult(key, result, annotation.ttl(), annotation.timeUnit());
             }
             return result;
-        } catch (Throwable t) {
+        } catch (Exception t) {
             storage.remove(key);
             throw t;
         }

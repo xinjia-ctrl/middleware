@@ -1,5 +1,7 @@
 package com.example.idempotent.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.ParameterNameDiscoverer;
 import org.springframework.expression.EvaluationContext;
@@ -11,33 +13,41 @@ import java.lang.reflect.Method;
 
 public class KeyParser {
 
+    private static final Logger log = LoggerFactory.getLogger(KeyParser.class);
     private static final ExpressionParser PARSER = new SpelExpressionParser();
     private static final ParameterNameDiscoverer NAME_DISCOVERER = new DefaultParameterNameDiscoverer();
 
     public static String parse(String key, Method method, Object[] args) {
+        String prefix = method.toGenericString();
+
         if (key == null || key.isBlank()) {
-            return method.toGenericString();
+            return prefix;
         }
 
         if (!key.contains("#")) {
-            return method.toGenericString() + ":" + key;
+            return prefix + ":" + key;
         }
 
         String[] paramNames = NAME_DISCOVERER.getParameterNames(method);
         if (paramNames == null) {
-            return method.toGenericString() + ":" + key;
+            log.warn("parameter names not available (no -parameters compiler flag?), fallback to raw key: {}", key);
+            return prefix + ":" + key;
         }
 
         EvaluationContext ctx = new StandardEvaluationContext();
-        for (int i = 0; i < paramNames.length; i++) {
-            ctx.setVariable(paramNames[i], args[i]);
+        if (args != null) {
+            int bound = Math.min(paramNames.length, args.length);
+            for (int i = 0; i < bound; i++) {
+                ctx.setVariable(paramNames[i], args[i]);
+            }
         }
 
         try {
             Object value = PARSER.parseExpression(key).getValue(ctx);
-            return method.toGenericString() + ":" + (value == null ? "null" : value.toString());
+            return prefix + ":" + (value == null ? "null" : value.toString());
         } catch (Exception e) {
-            return method.toGenericString() + ":" + key;
+            log.warn("SpEL parse failed for key '{}', fallback to raw key", key, e);
+            return prefix + ":" + key;
         }
     }
 }
