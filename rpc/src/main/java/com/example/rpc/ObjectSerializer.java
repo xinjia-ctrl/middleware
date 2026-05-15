@@ -6,7 +6,7 @@ public class ObjectSerializer implements Serializer {
 
     @Override
     public short getType() {
-        return 0;
+        return RpcConstants.SERIALIZER_JDK;
     }
 
     @Override

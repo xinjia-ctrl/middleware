@@ -3,7 +3,7 @@ package com.example.rpc;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-public class RandomLoadBalancer implements LoadBalancer {
+public class RandomLoadBalance implements LoadBalance {
 
     @Override
     public String select(List<String> addresses) {

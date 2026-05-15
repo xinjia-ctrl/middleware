@@ -7,22 +7,22 @@ import java.lang.reflect.Proxy;
 public class RpcClientProxy {
 
     private final RpcClient rpcClient;
+    private final ServiceDiscovery discovery;
     private final String host;
     private final int port;
-    private final ServiceDiscovery discovery;
 
     public RpcClientProxy(RpcClient rpcClient, String host, int port) {
         this.rpcClient = rpcClient;
+        this.discovery = null;
         this.host = host;
         this.port = port;
-        this.discovery = null;
     }
 
     public RpcClientProxy(RpcClient rpcClient, ServiceDiscovery discovery) {
         this.rpcClient = rpcClient;
+        this.discovery = discovery;
         this.host = null;
         this.port = 0;
-        this.discovery = discovery;
     }
 
     @SuppressWarnings("unchecked")
@@ -30,10 +30,17 @@ public class RpcClientProxy {
         return (T) Proxy.newProxyInstance(
                 interfaceClass.getClassLoader(),
                 new Class<?>[]{interfaceClass},
-                new RpcInvocationHandler());
+                new RpcInvocationHandler(interfaceClass.getName()));
     }
 
     private class RpcInvocationHandler implements InvocationHandler {
+
+        private final String interfaceName;
+
+        RpcInvocationHandler(String interfaceName) {
+            this.interfaceName = interfaceName;
+        }
+
         @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             if (method.getDeclaringClass() == Object.class) {
@@ -41,26 +48,28 @@ public class RpcClientProxy {
             }
 
             RpcRequest request = new RpcRequest(
-                    method.getDeclaringClass().getName(),
+                    interfaceName,
                     method.getName(),
                     method.getParameterTypes(),
                     args);
 
+            String targetHost;
+            int targetPort;
             if (discovery != null) {
-                String address = discovery.discover(method.getDeclaringClass().getName());
+                String address = discovery.discover(interfaceName);
                 String[] parts = address.split(":");
-                RpcResponse response = rpcClient.sendRequest(request, parts[0], Integer.parseInt(parts[1]));
-                if (!response.isSuccess()) {
-                    throw new RuntimeException(response.getMessage());
-                }
-                return response.getData();
+                targetHost = parts[0];
+                targetPort = Integer.parseInt(parts[1]);
             } else {
-                RpcResponse response = rpcClient.sendRequest(request, host, port);
-                if (!response.isSuccess()) {
-                    throw new RuntimeException(response.getMessage());
-                }
-                return response.getData();
+                targetHost = host;
+                targetPort = port;
             }
+
+            RpcResponse response = rpcClient.sendRequest(request, targetHost, targetPort);
+            if (!response.isSuccess()) {
+                throw new RuntimeException(response.getMessage());
+            }
+            return response.getData();
         }
     }
 }

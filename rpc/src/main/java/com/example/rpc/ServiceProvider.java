@@ -23,4 +23,8 @@ public class ServiceProvider {
     public Object getService(String name) {
         return serviceMap.get(name);
     }
+
+    public void close() {
+        register.close();
+    }
 }

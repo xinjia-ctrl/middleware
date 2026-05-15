@@ -7,7 +7,7 @@ public class JsonSerializer implements Serializer {
 
     @Override
     public short getType() {
-        return 1;
+        return RpcConstants.SERIALIZER_JSON;
     }
 
     @Override

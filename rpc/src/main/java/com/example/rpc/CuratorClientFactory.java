@@ -26,6 +26,13 @@ public class CuratorClientFactory {
         });
     }
 
+    public static void close(String zkAddr) {
+        CuratorFramework client = clients.remove(zkAddr);
+        if (client != null) {
+            client.close();
+        }
+    }
+
     public static void closeAll() {
         clients.values().forEach(CuratorFramework::close);
         clients.clear();

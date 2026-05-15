@@ -39,7 +39,7 @@ public class NettyRpcServer {
                         ch.pipeline()
                                 .addLast(new MyEncode(serializer))
                                 .addLast(new MyDecode())
-                                .addLast(new RpcServerHandler());
+                                .addLast(new RpcServerHandler(serviceProvider));
                     }
                 });
 
@@ -53,27 +53,36 @@ public class NettyRpcServer {
         System.out.println("NettyRpcServer stopped");
     }
 
-    private class RpcServerHandler extends SimpleChannelInboundHandler<RpcRequest> {
+    private static class RpcServerHandler extends SimpleChannelInboundHandler<RpcRequest> {
+
+        private final ServiceProvider serviceProvider;
+
+        RpcServerHandler(ServiceProvider serviceProvider) {
+            this.serviceProvider = serviceProvider;
+        }
 
         @Override
         protected void channelRead0(ChannelHandlerContext ctx, RpcRequest request) {
             System.out.println("Received: " + request);
 
-            RpcResponse response;
+            RpcResponse response = new RpcResponse();
+
             try {
                 Object serviceImpl = serviceProvider.getService(request.getInterfaceName());
                 if (serviceImpl == null) {
-                    response = new RpcResponse(500, null,
-                            "service not found: " + request.getInterfaceName());
+                    response.setCode(500);
+                    response.setMessage("service not found: " + request.getInterfaceName());
                 } else {
                     Method method = serviceImpl.getClass().getMethod(
                             request.getMethodName(), request.getParameterTypes());
                     Object result = method.invoke(serviceImpl, request.getParameters());
-                    response = new RpcResponse(200, result, null);
+                    response.setCode(200);
+                    response.setData(result);
                 }
             } catch (Exception e) {
                 Throwable cause = e.getCause() != null ? e.getCause() : e;
-                response = new RpcResponse(500, null, cause.getMessage());
+                response.setCode(500);
+                response.setMessage(cause.getMessage());
             }
             response.setRequestId(request.getRequestId());
             ctx.writeAndFlush(response);

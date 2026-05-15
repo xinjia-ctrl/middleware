@@ -7,17 +7,16 @@ public class RpcServer {
         String zkAddr = args.length > 1 ? args[1] : "127.0.0.1:2181";
         String serverAddress = "127.0.0.1:" + port;
 
-        ServiceRegister register = new ZkServiceRegister(zkAddr);
-        ServiceProvider provider = new ServiceProvider(register, serverAddress);
+        ServiceProvider provider = RpcBootstrap.newServiceProvider(zkAddr, serverAddress);
         provider.addService(UserService.class, new UserServiceImpl());
         provider.addService(OrderService.class, new OrderServiceImpl());
 
-        NettyRpcServer server = new NettyRpcServer(provider);
+        NettyRpcServer server = RpcBootstrap.createServer(provider);
         server.start(port);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             server.stop();
-            register.close();
+            provider.close();
         }));
     }
 }
