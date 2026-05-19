@@ -32,6 +32,7 @@ public class SimpleRpcClient implements RpcClient {
         try (Socket socket = new Socket(host, port);
              DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
              DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            socket.setSoTimeout(3000);
 
             byte[] body = serializer.serialize(request);
 
@@ -57,6 +58,9 @@ public class SimpleRpcClient implements RpcClient {
             byte compressFlag = dis.readByte(); // 压缩标记
             dis.readByte();                     // 保留
             int len = dis.readInt();            // 消息体长度
+            if (len < 0 || len > RpcConstants.MAX_FRAME_SIZE) {
+                throw new RuntimeException("invalid frame length: " + len);
+            }
 
             byte[] respBody = new byte[len];
             dis.readFully(respBody);

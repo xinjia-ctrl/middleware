@@ -19,6 +19,7 @@ public class RpcConstants {
     public static final int HEADER_SIZE = 14;
     public static final byte GZIP_COMPRESS = 1;
     public static final int GZIP_THRESHOLD = 256;
+    public static final int MAX_FRAME_SIZE = 8 * 1024 * 1024;
 
     public static final String LB_RANDOM = "random";
     public static final String LB_ROUND = "round";

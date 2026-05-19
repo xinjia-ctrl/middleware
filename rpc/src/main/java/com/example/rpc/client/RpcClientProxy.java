@@ -60,6 +60,13 @@ public class RpcClientProxy {
                 new RpcInvocationHandler(interfaceClass.getName()));
     }
 
+    public void close() {
+        rpcClient.close();
+        if (discovery != null) {
+            discovery.close();
+        }
+    }
+
     private class RpcInvocationHandler implements InvocationHandler {
 
         private final String interfaceName;
@@ -88,10 +95,11 @@ public class RpcClientProxy {
                     String targetHost;
                     int targetPort;
                     if (discovery != null) {
-                        String address = discovery.discover(interfaceName, isRetry);
-                        String[] parts = address.split(":");
-                        targetHost = parts[0];
-                        targetPort = Integer.parseInt(parts[1]);
+                        String address = discovery.discover(interfaceName, method.getName(), args, isRetry);
+                        com.example.rpc.config.ServiceAddress serviceAddress =
+                                com.example.rpc.config.ServiceAddress.parse(address);
+                        targetHost = serviceAddress.getHost();
+                        targetPort = serviceAddress.getPort();
                     } else {
                         targetHost = host;
                         targetPort = port;

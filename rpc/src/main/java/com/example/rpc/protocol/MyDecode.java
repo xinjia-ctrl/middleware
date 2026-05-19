@@ -48,6 +48,11 @@ public class MyDecode extends ByteToMessageDecoder {
         in.readByte(); // 保留
         int bodyLength = in.readInt();
 
+        if (bodyLength < 0 || bodyLength > RpcConstants.MAX_FRAME_SIZE) {
+            ctx.close();
+            return;
+        }
+
         if (in.readableBytes() < bodyLength) {
             in.resetReaderIndex();
             return;

@@ -26,41 +26,61 @@ public class NettyRpcClient implements RpcClient {
     private final EventLoopGroup group = new NioEventLoopGroup(4);
     private final Map<String, Channel> channelCache = new ConcurrentHashMap<>();
     private final Map<Long, CompletableFuture<RpcResponse>> pending = new ConcurrentHashMap<>();
+    private final Map<Long, String> pendingChannels = new ConcurrentHashMap<>();
     private final AtomicLong requestIdGen = new AtomicLong(0);
     private final Serializer serializer;
+    private final int timeoutSeconds;
 
     public NettyRpcClient() {
         this(new ObjectSerializer());
     }
 
     public NettyRpcClient(Serializer serializer) {
+        this(serializer, 3);
+    }
+
+    public NettyRpcClient(Serializer serializer, int timeoutSeconds) {
         this.serializer = serializer;
+        this.timeoutSeconds = timeoutSeconds;
     }
 
     @Override
     public RpcResponse sendRequest(RpcRequest request, String host, int port) {
         String key = host + ":" + port;
-        Channel channel = channelCache.get(key);
-        if (channel == null || !channel.isActive()) {
-            if (channel != null) {
-                channel.close();
+        Channel channel = channelCache.compute(key, (ignored, oldChannel) -> {
+            if (oldChannel != null && oldChannel.isActive()) {
+                return oldChannel;
             }
-            channel = createChannel(host, port);
-            channelCache.put(key, channel);
-        }
+            if (oldChannel != null) {
+                oldChannel.close();
+            }
+            return createChannel(host, port);
+        });
 
         long requestId = requestIdGen.incrementAndGet();
         request.setRequestId(requestId);
 
         CompletableFuture<RpcResponse> future = new CompletableFuture<>();
         pending.put(requestId, future);
+        pendingChannels.put(requestId, key);
 
-        channel.writeAndFlush(request);
+        channel.writeAndFlush(request).addListener(writeFuture -> {
+            if (!writeFuture.isSuccess()) {
+                CompletableFuture<RpcResponse> removed = pending.remove(requestId);
+                pendingChannels.remove(requestId);
+                if (removed != null) {
+                    removed.completeExceptionally(writeFuture.cause());
+                }
+                channelCache.remove(key, channel);
+                channel.close();
+            }
+        });
 
         try {
-            return future.get(3, TimeUnit.SECONDS);
+            return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (Exception e) {
             pending.remove(requestId);
+            pendingChannels.remove(requestId);
             throw new RuntimeException("rpc call timeout or failed", e);
         }
     }
@@ -83,7 +103,22 @@ public class NettyRpcClient implements RpcClient {
                                     protected void channelRead0(ChannelHandlerContext ctx, RpcResponse response) {
                                         CompletableFuture<RpcResponse> f =
                                                 pending.remove(response.getRequestId());
+                                        pendingChannels.remove(response.getRequestId());
                                         if (f != null) f.complete(response);
+                                    }
+
+                                    @Override
+                                    public void channelInactive(ChannelHandlerContext ctx) {
+                                        String channelKey = host + ":" + port;
+                                        pendingChannels.forEach((id, key) -> {
+                                            if (channelKey.equals(key)) {
+                                                CompletableFuture<RpcResponse> f = pending.remove(id);
+                                                pendingChannels.remove(id);
+                                                if (f != null) {
+                                                    f.completeExceptionally(new RuntimeException("rpc channel closed"));
+                                                }
+                                            }
+                                        });
                                     }
                                 });
                     }

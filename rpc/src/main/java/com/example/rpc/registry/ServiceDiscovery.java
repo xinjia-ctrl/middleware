@@ -2,6 +2,7 @@ package com.example.rpc.registry;
 import com.example.rpc.loadbalance.LoadBalance;
 import com.example.rpc.loadbalance.LoadBalanceFactory;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,6 +38,12 @@ public class ServiceDiscovery {
 
     public String discover(String serviceName, String key) {
         List<String> addresses = getAddresses(serviceName, false);
+        return loadBalance.select(addresses, key);
+    }
+
+    public String discover(String serviceName, String methodName, Object[] args, boolean forceRefresh) {
+        List<String> addresses = getAddresses(serviceName, forceRefresh);
+        String key = serviceName + "#" + methodName + "#" + Arrays.deepHashCode(args == null ? new Object[0] : args);
         return loadBalance.select(addresses, key);
     }
 
