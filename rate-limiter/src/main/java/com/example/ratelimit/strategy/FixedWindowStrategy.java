@@ -27,8 +27,12 @@ public class FixedWindowStrategy implements RateLimitStrategy {
                 window.counter.set(permits);
                 return true;
             }
-            long count = window.counter.addAndGet(permits);
-            return count <= maxPermits;
+            long count = window.counter.get();
+            if (count + permits <= maxPermits) {
+                window.counter.addAndGet(permits);
+                return true;
+            }
+            return false;
         }
     }
 

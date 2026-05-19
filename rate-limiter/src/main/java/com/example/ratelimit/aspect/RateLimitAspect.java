@@ -8,9 +8,12 @@ import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
+import org.springframework.aop.support.AopUtils;
+import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
 @Aspect
@@ -24,10 +27,12 @@ public class RateLimitAspect {
         this.strategyFactory = strategyFactory;
     }
 
-    @Around("@annotation(com.example.ratelimit.annotation.RateLimit)")
+    @Around("@annotation(com.example.ratelimit.annotation.RateLimit) || @within(com.example.ratelimit.annotation.RateLimit)")
     public Object around(ProceedingJoinPoint pjp) throws Throwable {
-        Method method = ((MethodSignature) pjp.getSignature()).getMethod();
-        RateLimit annotation = method.getAnnotation(RateLimit.class);
+        Method signatureMethod = ((MethodSignature) pjp.getSignature()).getMethod();
+        Class<?> targetClass = pjp.getTarget().getClass();
+        Method method = AopUtils.getMostSpecificMethod(signatureMethod, targetClass);
+        RateLimit annotation = resolveAnnotation(method, targetClass);
 
         String key = KeyParser.parse(annotation.key(), method, pjp.getArgs());
 
@@ -57,7 +62,19 @@ public class RateLimitAspect {
         if (fallbackMethod == null) {
             throw new RateLimitException("fallback method '" + fallback + "' not found");
         }
-        return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
+        try {
+            return fallbackMethod.invoke(pjp.getTarget(), pjp.getArgs());
+        } catch (InvocationTargetException e) {
+            throw e.getTargetException();
+        }
+    }
+
+    private RateLimit resolveAnnotation(Method method, Class<?> targetClass) {
+        RateLimit annotation = AnnotatedElementUtils.findMergedAnnotation(method, RateLimit.class);
+        if (annotation != null) {
+            return annotation;
+        }
+        return AnnotatedElementUtils.findMergedAnnotation(targetClass, RateLimit.class);
     }
 
     private Method findFallbackMethod(Class<?> targetClass, String name, Class<?>[] paramTypes) {

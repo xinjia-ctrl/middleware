@@ -4,16 +4,20 @@ local window_millis = tonumber(ARGV[2])
 local now = tonumber(ARGV[3])
 local permits = tonumber(ARGV[4])
 
-local count = redis.call('GET', key)
-if not count then
-    redis.call('SET', key, permits, 'PX', window_millis)
+local window_start = now - (now % window_millis)
+local current_start = redis.call('HGET', key, 'window_start')
+local count = redis.call('HGET', key, 'count')
+
+if not current_start or tonumber(current_start) ~= window_start then
+    redis.call('HSET', key, 'window_start', window_start, 'count', permits)
+    redis.call('PEXPIRE', key, window_millis * 2)
     return 1
 end
 
 count = tonumber(count)
 if count + permits <= max_permits then
-    redis.call('INCRBY', key, permits)
-    redis.call('PEXPIRE', key, window_millis)
+    redis.call('HINCRBY', key, 'count', permits)
+    redis.call('PEXPIRE', key, window_millis * 2)
     return 1
 end
 return 0

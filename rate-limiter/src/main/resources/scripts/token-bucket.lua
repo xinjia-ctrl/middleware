@@ -32,5 +32,6 @@ if remaining >= 0 then
     return 1
 end
 
+redis.call('SET', key .. ':tokens', new_tokens, 'PX', ttl)
 redis.call('SET', key .. ':ts', now, 'PX', ttl)
 return 0

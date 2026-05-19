@@ -52,4 +52,14 @@ class RateLimitStrategyTest {
         assertFalse(s.tryAcquire("user-a", 1));
         assertFalse(s.tryAcquire("user-b", 1));
     }
+
+    @Test
+    void fixedWindowRejectedRequestShouldNotConsumePermits() {
+        FixedWindowStrategy s = new FixedWindowStrategy(3, 1, TimeUnit.SECONDS);
+
+        assertTrue(s.tryAcquire("key", 2));
+        assertFalse(s.tryAcquire("key", 2));
+        assertTrue(s.tryAcquire("key", 1));
+        assertFalse(s.tryAcquire("key", 1));
+    }
 }

@@ -10,6 +10,9 @@ local water = redis.call('GET', key .. ':water')
 local ts = redis.call('GET', key .. ':ts')
 
 if not water then
+    if permits > capacity then
+        return 0
+    end
     redis.call('SET', key .. ':water', permits, 'PX', ttl)
     redis.call('SET', key .. ':ts', now, 'PX', ttl)
     return 1
@@ -29,5 +32,6 @@ if water + permits <= capacity then
     return 1
 end
 
+redis.call('SET', key .. ':water', water, 'PX', ttl)
 redis.call('SET', key .. ':ts', now, 'PX', ttl)
 return 0
